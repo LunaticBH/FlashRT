@@ -339,6 +339,7 @@ namespace py = pybind11;
 
 static void* to_ptr(uintptr_t addr) { return reinterpret_cast<void*>(addr); }
 template<typename T> static T* typed_ptr(uintptr_t addr) { return reinterpret_cast<T*>(addr); }
+bool pdl_launch_enabled();  // csrc/kernels/quantize.cu (Gapless FlashRT fork)
 static cudaStream_t to_stream(uintptr_t s) { return reinterpret_cast<cudaStream_t>(s); }
 
 static std::string kernel_shape(
@@ -918,6 +919,9 @@ PYBIND11_MODULE(flash_rt_kernels, m) {
        py::arg("seq_len"), py::arg("dim"), py::arg("eps") = 1e-6f,
        py::arg("d_scale") = 0, py::arg("stream") = 0);
 
+    m.def("pdl_enabled", []() { return pdl_launch_enabled(); },
+          "Gapless FlashRT fork: True when GAPLESS_FLASHRT_PDL=1 made the hand-written "
+          "Pi0.5 kernels launch with programmatic dependent launch");
     m.def("ada_rms_norm_style_fp8", [](uintptr_t x, uintptr_t weight, uintptr_t style,
                                         uintptr_t out, uintptr_t gate_out,
                                         int seq_len, int dim, float eps,

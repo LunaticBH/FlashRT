@@ -6,6 +6,7 @@
 
 #include "norm.cuh"
 #include "common.cuh"
+#include "pdl_launch.cuh"  // Gapless FlashRT fork: PDL launch helpers
 
 // ── RMSNorm ──
 template<typename T>
@@ -125,6 +126,7 @@ __global__ void layer_norm_kernel(const T* __restrict__ x,
     int dim2 = dim >> 1;
 
     extern __shared__ float shared[];
+    fvk_pdl::prologue();
     float local_sum = 0.0f;
     for (int i = threadIdx.x; i < dim2; i += blockDim.x) {
         T2 val = x2[i];
@@ -154,7 +156,7 @@ template __global__ void layer_norm_kernel<__nv_bfloat16>(const __nv_bfloat16*, 
 void layer_norm(const __nv_bfloat16* x, const __nv_bfloat16* weight,
                 const __nv_bfloat16* bias, __nv_bfloat16* out,
                 int seq_len, int dim, float eps, cudaStream_t stream) {
-    layer_norm_kernel<__nv_bfloat16><<<seq_len, 256, 256 * sizeof(float), stream>>>(x, weight, bias, out, dim, eps);
+    FVK_PDL_LAUNCH(layer_norm_kernel<__nv_bfloat16>, seq_len, 256, 256 * sizeof(float), stream, x, weight, bias, out, dim, eps);
 }
 void layer_norm_fp16(const __half* x, const __half* weight,
                       const __half* bias, __half* out,
@@ -301,6 +303,7 @@ __global__ void ada_rms_norm_style_kernel(
     int dim2 = dim >> 1;
 
     extern __shared__ float shared[];
+    fvk_pdl::prologue();
     float local_sum = 0.0f;
     for (int i = threadIdx.x; i < dim2; i += blockDim.x) {
         T2 val = x2[i];
@@ -328,7 +331,7 @@ void ada_rms_norm_style(const __nv_bfloat16* x, const __nv_bfloat16* weight,
                         const __nv_bfloat16* style,
                         __nv_bfloat16* out, __nv_bfloat16* gate_out,
                         int seq_len, int dim, float eps, cudaStream_t stream) {
-    ada_rms_norm_style_kernel<__nv_bfloat16><<<seq_len, 256, 256 * sizeof(float), stream>>>(
+    FVK_PDL_LAUNCH(ada_rms_norm_style_kernel<__nv_bfloat16>, seq_len, 256, 256 * sizeof(float), stream,
         x, weight, style, out, gate_out, dim, eps);
 }
 
@@ -356,6 +359,7 @@ __global__ void rms_norm_fp8_kernel(const T* __restrict__ x,
     int dim2 = dim >> 1;
 
     extern __shared__ float shared[];
+    fvk_pdl::prologue();
     float local_sum = 0.0f;
     for (int i = threadIdx.x; i < dim2; i += blockDim.x) {
         T2 val = x2[i];
@@ -380,7 +384,7 @@ template __global__ void rms_norm_fp8_kernel<__nv_bfloat16>(const __nv_bfloat16*
 void rms_norm_fp8(const __nv_bfloat16* x, const __nv_bfloat16* weight,
                    __nv_fp8_e4m3* out, int seq_len, int dim, float eps,
                    const float* d_scale, cudaStream_t stream) {
-    rms_norm_fp8_kernel<__nv_bfloat16><<<seq_len, 256, 256 * sizeof(float), stream>>>(x, weight, out, dim, eps, d_scale);
+    FVK_PDL_LAUNCH(rms_norm_fp8_kernel<__nv_bfloat16>, seq_len, 256, 256 * sizeof(float), stream, x, weight, out, dim, eps, d_scale);
 }
 void rms_norm_fp8_fp16(const __half* x, const __half* weight,
                         __nv_fp8_e4m3* out, int seq_len, int dim, float eps,
@@ -407,6 +411,7 @@ __global__ void ada_rms_norm_style_fp8_kernel(
     int dim2 = dim >> 1;
 
     extern __shared__ float shared[];
+    fvk_pdl::prologue();
     float local_sum = 0.0f;
     for (int i = threadIdx.x; i < dim2; i += blockDim.x) {
         T2 val = x2[i];
@@ -437,7 +442,7 @@ void ada_rms_norm_style_fp8(const __nv_bfloat16* x, const __nv_bfloat16* weight,
                              __nv_fp8_e4m3* out, __nv_bfloat16* gate_out,
                              int seq_len, int dim, float eps,
                              const float* d_scale, cudaStream_t stream) {
-    ada_rms_norm_style_fp8_kernel<__nv_bfloat16><<<seq_len, 256, 256 * sizeof(float), stream>>>(
+    FVK_PDL_LAUNCH(ada_rms_norm_style_fp8_kernel<__nv_bfloat16>, seq_len, 256, 256 * sizeof(float), stream,
         x, weight, style, out, gate_out, dim, eps, d_scale);
 }
 
@@ -456,6 +461,7 @@ __global__ void residual_add_rms_norm_fp8_kernel(
     int dim2 = dim >> 1;
 
     extern __shared__ float shared[];
+    fvk_pdl::prologue();
     float local_sum = 0.0f;
     for (int i = threadIdx.x; i < dim2; i += blockDim.x) {
         T2 rv = res2[i], xv = x2[i];
@@ -483,7 +489,7 @@ void residual_add_rms_norm_fp8(__nv_bfloat16* residual, const __nv_bfloat16* x,
                                 const __nv_bfloat16* weight, __nv_fp8_e4m3* out,
                                 int seq_len, int dim, float eps,
                                 const float* d_scale, cudaStream_t stream) {
-    residual_add_rms_norm_fp8_kernel<__nv_bfloat16><<<seq_len, 256, 256 * sizeof(float), stream>>>(
+    FVK_PDL_LAUNCH(residual_add_rms_norm_fp8_kernel<__nv_bfloat16>, seq_len, 256, 256 * sizeof(float), stream,
         residual, x, weight, out, dim, eps, d_scale);
 }
 void residual_add_rms_norm_fp8_fp16(__half* residual, const __half* x,

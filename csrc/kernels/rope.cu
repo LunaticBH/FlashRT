@@ -5,6 +5,7 @@
 
 #include "rope.cuh"
 #include "common.cuh"
+#include "pdl_launch.cuh"  // Gapless FlashRT fork: PDL launch helpers
 
 // ── RoPE ──
 __global__ void rope_kernel(const __nv_bfloat16* __restrict__ rope_weights,
@@ -95,6 +96,7 @@ __global__ void qkv_split_kernel(const __nv_bfloat16* __restrict__ qkv,
                                   int seq, int q_dim, int k_dim, int v_dim) {
     int qkv_dim = q_dim + k_dim + v_dim;
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    fvk_pdl::prologue();
     int total = seq * qkv_dim;
     if (idx < total) {
         int row = idx / qkv_dim;
@@ -117,7 +119,7 @@ void qkv_split(const __nv_bfloat16* qkv,
     int total = seq * (q_dim + k_dim + v_dim);
     int threads = 256;
     int blocks = (total + threads - 1) / threads;
-    qkv_split_kernel<<<blocks, threads, 0, stream>>>(qkv, Q, K, V, seq, q_dim, k_dim, v_dim);
+    FVK_PDL_LAUNCH(qkv_split_kernel, blocks, threads, 0, stream, qkv, Q, K, V, seq, q_dim, k_dim, v_dim);
 }
 
 void qkv_split_fp16(const __half* qkv,
@@ -141,6 +143,7 @@ __global__ void qkv_split_rope_kernel(
     int seq, int q_dim, int k_dim, int v_dim, int head_dim) {
     int qkv_dim = q_dim + k_dim + v_dim;
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    fvk_pdl::prologue();
     int total = seq * qkv_dim;
     if (idx >= total) return;
 
@@ -201,7 +204,7 @@ void qkv_split_rope(const __nv_bfloat16* qkv,
     int total = seq * (q_dim + k_dim + v_dim);
     int threads = 256;
     int blocks = (total + threads - 1) / threads;
-    qkv_split_rope_kernel<<<blocks, threads, 0, stream>>>(
+    FVK_PDL_LAUNCH(qkv_split_rope_kernel, blocks, threads, 0, stream,
         qkv, rope_weights, Q, K, V, seq, q_dim, k_dim, v_dim, head_dim);
 }
 
