@@ -6,6 +6,7 @@
 
 #include "quantize.cuh"
 #include "common.cuh"
+#include "pdl_launch.cuh"  // Gapless FlashRT fork: PDL launch helpers
 #include "norm.cuh"
 #include "activation.cuh"
 
@@ -65,6 +66,7 @@ __global__ void quantize_fp8_kernel_generic(const T* __restrict__ input,
     const T2* in2 = reinterpret_cast<const T2*>(input);
     int n2 = n >> 1;
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    fvk_pdl::prologue();
     if (idx < n2) {
         float inv_s = 1.0f / (*scale);
         T2 val = in2[idx];
@@ -96,7 +98,7 @@ float quantize_fp8(const __nv_bfloat16* input, __nv_fp8_e4m3* output,
 
     int n2 = n >> 1;
     blocks = (n2 + threads - 1) / threads;
-    quantize_fp8_kernel_generic<__nv_bfloat16><<<blocks, threads, 0, stream>>>(input, output, d_scale, n);
+    FVK_PDL_LAUNCH(quantize_fp8_kernel_generic<__nv_bfloat16>, blocks, threads, 0, stream, input, output, d_scale, n);
 
     cudaFree(d_max);
     return scale;
@@ -146,13 +148,17 @@ void fp8_accumulate_scale_max(const float* src_scale, float* dst_scale,
     fp8_accumulate_scale_max_kernel<<<1, 1, 0, stream>>>(src_scale, dst_scale);
 }
 
+// Gapless FlashRT fork: whether launches through FVK_PDL_LAUNCH carry the
+// programmatic-stream-serialization attribute (GAPLESS_FLASHRT_PDL=1).
+bool pdl_launch_enabled() { return fvk_pdl::enabled(); }
+
 // Static FP8 quantize: uses pre-computed scale on device (no absmax, no reduction)
 void quantize_fp8_static(const __nv_bfloat16* input, __nv_fp8_e4m3* output,
                           const float* d_scale, int n, cudaStream_t stream) {
     int n2 = n >> 1;
     int threads = 256;
     int blocks = (n2 + threads - 1) / threads;
-    quantize_fp8_kernel_generic<__nv_bfloat16><<<blocks, threads, 0, stream>>>(input, output, d_scale, n);
+    FVK_PDL_LAUNCH(quantize_fp8_kernel_generic<__nv_bfloat16>, blocks, threads, 0, stream, input, output, d_scale, n);
 }
 
 __global__ void dequantize_fp8_static_bf16_kernel(
@@ -307,7 +313,7 @@ void quantize_fp8_device(const __nv_bfloat16* input, __nv_fp8_e4m3* output,
 
     int n2 = n >> 1;
     blocks = (n2 + threads - 1) / threads;
-    quantize_fp8_kernel_generic<__nv_bfloat16><<<blocks, threads, 0, stream>>>(input, output, d_scale, n);
+    FVK_PDL_LAUNCH(quantize_fp8_kernel_generic<__nv_bfloat16>, blocks, threads, 0, stream, input, output, d_scale, n);
 }
 
 void quantize_fp8_device_fp16(const __half* input, __nv_fp8_e4m3* output,

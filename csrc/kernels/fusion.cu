@@ -6,6 +6,7 @@
 
 #include "fusion.cuh"
 #include "common.cuh"
+#include "pdl_launch.cuh"  // Gapless FlashRT fork: PDL launch helpers
 
 // ── Fused Gate*Residual + AdaRMSNorm + Style -> FP8 ──
 // Pass 1: residual += x * gate; sum_sq += residual^2
@@ -37,6 +38,7 @@ __global__ void gate_residual_ada_norm_fp8_kernel(
     int dim2 = dim >> 1;
 
     extern __shared__ float shared[];
+    fvk_pdl::prologue();
 
     // Pass 1: residual += x * gate, compute sum of squares
     float local_sum = 0.0f;
@@ -76,7 +78,7 @@ void gate_residual_ada_norm_fp8(__nv_bfloat16* residual, const __nv_bfloat16* x,
                                  __nv_fp8_e4m3* out, __nv_bfloat16* gate_out,
                                  int seq_len, int dim, float eps,
                                  const float* d_scale, cudaStream_t stream) {
-    gate_residual_ada_norm_fp8_kernel<__nv_bfloat16><<<seq_len, 256, 256 * sizeof(float), stream>>>(
+    FVK_PDL_LAUNCH(gate_residual_ada_norm_fp8_kernel<__nv_bfloat16>, seq_len, 256, 256 * sizeof(float), stream,
         residual, x, gate, weight, style, out, gate_out, dim, eps, d_scale);
 }
 void gate_residual_ada_norm_fp8_fp16(__half* residual, const __half* x,

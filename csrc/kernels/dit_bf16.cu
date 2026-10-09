@@ -8,6 +8,7 @@
 #include <cuda_bf16.h>
 #include <cuda_fp8.h>
 #include <cstdint>
+#include "pdl_launch.cuh"  // Gapless FlashRT fork: PDL launch helpers
 
 // ────────────────────────────────────────────────────────────────────
 // LayerNorm (no affine) — bf16
@@ -281,6 +282,7 @@ void ada_layer_norm_bf16_per_token(
 __global__ void add_bias_bf16_kernel(__nv_bfloat16* x, const __nv_bfloat16* b,
                                       int S, int D) {
     int i = blockIdx.x * blockDim.x + threadIdx.x;
+    fvk_pdl::prologue();
     if (i < S * D) {
         x[i] = __float2bfloat16(__bfloat162float(x[i]) + __bfloat162float(b[i % D]));
     }
@@ -288,7 +290,7 @@ __global__ void add_bias_bf16_kernel(__nv_bfloat16* x, const __nv_bfloat16* b,
 
 void add_bias_bf16(__nv_bfloat16* x, const __nv_bfloat16* b,
                     int S, int D, cudaStream_t stream) {
-    add_bias_bf16_kernel<<<(S * D + 255) / 256, 256, 0, stream>>>(x, b, S, D);
+    FVK_PDL_LAUNCH(add_bias_bf16_kernel, (S * D + 255) / 256, 256, 0, stream, x, b, S, D);
 }
 
 // ────────────────────────────────────────────────────────────────────

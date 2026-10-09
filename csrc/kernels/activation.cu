@@ -6,6 +6,7 @@
 
 #include "activation.cuh"
 #include "common.cuh"
+#include "pdl_launch.cuh"  // Gapless FlashRT fork: PDL launch helpers
 
 // ── Gate GELU Multiply ──
 // GELU(x) approx: x * sigmoid(1.5957691216 * x * (1 + 0.044715 * x^2))
@@ -43,6 +44,7 @@ __global__ void gelu_kernel(T* __restrict__ x, int n) {
     T2* x2 = reinterpret_cast<T2*>(x);
     int n2 = n >> 1;
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    fvk_pdl::prologue();
     if (idx < n2) {
         T2 val = x2[idx];
         float v0 = to_f32(val.x), v1 = to_f32(val.y);
@@ -59,7 +61,7 @@ template __global__ void gelu_kernel<__nv_bfloat16>(__nv_bfloat16*, int);
 
 void gelu_inplace(__nv_bfloat16* x, int n, cudaStream_t stream) {
     int n2 = n >> 1;
-    gelu_kernel<__nv_bfloat16><<<(n2 + 255) / 256, 256, 0, stream>>>(x, n);
+    FVK_PDL_LAUNCH(gelu_kernel<__nv_bfloat16>, (n2 + 255) / 256, 256, 0, stream, x, n);
 }
 void gelu_inplace_fp16(__half* x, int n, cudaStream_t stream) {
     int n2 = n >> 1;
@@ -253,6 +255,7 @@ __global__ void gate_geglu_merged_fp8_kernel(const T* __restrict__ merged,
                                                  int seq, int half_dim,
                                                  const float* __restrict__ d_scale) {
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    fvk_pdl::prologue();
     int total = seq * half_dim;
     if (idx < total) {
         int row = idx / half_dim;
@@ -276,7 +279,7 @@ void gate_geglu_merged_fp8(const __nv_bfloat16* merged, __nv_fp8_e4m3* out,
                                const float* d_scale, cudaStream_t stream) {
     int total = seq * half_dim;
     int blocks = (total + 255) / 256;
-    gate_geglu_merged_fp8_kernel<__nv_bfloat16><<<blocks, 256, 0, stream>>>(
+    FVK_PDL_LAUNCH(gate_geglu_merged_fp8_kernel<__nv_bfloat16>, blocks, 256, 0, stream,
         merged, out, seq, half_dim, d_scale);
 }
 void gate_geglu_merged_fp8_fp16(const __half* merged, __nv_fp8_e4m3* out,

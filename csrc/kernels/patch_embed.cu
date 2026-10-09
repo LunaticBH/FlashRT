@@ -6,6 +6,7 @@
 // ================================================================
 
 #include "patch_embed.cuh"
+#include "pdl_launch.cuh"  // Gapless FlashRT fork: PDL launch helpers
 
 // ── GPU im2col for SigLIP patch embedding ──
 // Input:  (nv, 224, 224, 3) FP16, row-major NHWC
@@ -22,6 +23,7 @@ __global__ void patch_im2col_kernel(
 {
     // Total output elements = nv * 256 * 588
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    fvk_pdl::prologue();
     int total = nv * 256 * 588;
     if (idx >= total) return;
 
@@ -51,7 +53,7 @@ void patch_im2col(const half* input, half* output, int nv, cudaStream_t stream)
     int total = nv * 256 * 588;
     int threads = 256;
     int blocks = (total + threads - 1) / threads;
-    patch_im2col_kernel<<<blocks, threads, 0, stream>>>(input, output, nv);
+    FVK_PDL_LAUNCH(patch_im2col_kernel, blocks, threads, 0, stream, input, output, nv);
 }
 
 __global__ void patch_im2col_uint8_kernel(

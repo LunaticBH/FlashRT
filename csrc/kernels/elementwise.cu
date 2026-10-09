@@ -6,6 +6,7 @@
 
 #include "elementwise.cuh"
 #include "common.cuh"
+#include "pdl_launch.cuh"  // Gapless FlashRT fork: PDL launch helpers
 #include "fp8_numeric_conversion.cuh"
 #include <math_constants.h>
 
@@ -20,6 +21,7 @@ __global__ void gate_mul_res_kernel(T* __restrict__ residual,
     const T2* g2 = reinterpret_cast<const T2*>(gate);
     int n2 = n >> 1;
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    fvk_pdl::prologue();
     if (idx < n2) {
         T2 rv = res2[idx], xv = x2[idx], gv = g2[idx];
         float r0 = to_f32(rv.x) + to_f32(xv.x) * to_f32(gv.x);
@@ -34,7 +36,7 @@ template __global__ void gate_mul_res_kernel<__nv_bfloat16>(__nv_bfloat16*, cons
 void gate_mul_residual(__nv_bfloat16* residual, const __nv_bfloat16* x,
                        const __nv_bfloat16* gate, int n, cudaStream_t stream) {
     int n2 = n >> 1;
-    gate_mul_res_kernel<__nv_bfloat16><<<(n2 + 255) / 256, 256, 0, stream>>>(residual, x, gate, n);
+    FVK_PDL_LAUNCH(gate_mul_res_kernel<__nv_bfloat16>, (n2 + 255) / 256, 256, 0, stream, residual, x, gate, n);
 }
 void gate_mul_residual_fp16(__half* residual, const __half* x,
                             const __half* gate, int n, cudaStream_t stream) {
@@ -193,6 +195,7 @@ __global__ void bias_res_kernel(T* __restrict__ residual,
     const T2* x2 = reinterpret_cast<const T2*>(x + row * dim);
     const T2* b2 = reinterpret_cast<const T2*>(bias);
     int dim2 = dim >> 1;
+    fvk_pdl::prologue();
     for (int i = threadIdx.x; i < dim2; i += blockDim.x) {
         T2 rv = res2[i], xv = x2[i], bv = b2[i];
         float r0 = to_f32(rv.x) + to_f32(xv.x) + to_f32(bv.x);
@@ -207,7 +210,7 @@ template __global__ void bias_res_kernel<__nv_bfloat16>(__nv_bfloat16*, const __
 void bias_residual(__nv_bfloat16* residual, const __nv_bfloat16* x,
                    const __nv_bfloat16* bias, int seq_len, int dim,
                    cudaStream_t stream) {
-    bias_res_kernel<__nv_bfloat16><<<seq_len, 256, 0, stream>>>(residual, x, bias, dim);
+    FVK_PDL_LAUNCH(bias_res_kernel<__nv_bfloat16>, seq_len, 256, 0, stream, residual, x, bias, dim);
 }
 void bias_residual_fp16(__half* residual, const __half* x,
                         const __half* bias, int seq_len, int dim,
@@ -288,6 +291,7 @@ __global__ void res_add_kernel(T* __restrict__ residual,
     const T2* x2 = reinterpret_cast<const T2*>(x);
     int n2 = n >> 1;
     int idx = blockIdx.x * blockDim.x + threadIdx.x;
+    fvk_pdl::prologue();
     if (idx < n2) {
         T2 rv = res2[idx], xv = x2[idx];
         res2[idx] = make_packed2<T>(
@@ -302,7 +306,7 @@ template __global__ void res_add_kernel<__nv_bfloat16>(__nv_bfloat16*, const __n
 void residual_add(__nv_bfloat16* residual, const __nv_bfloat16* x, int n,
                   cudaStream_t stream) {
     int n2 = n >> 1;
-    res_add_kernel<__nv_bfloat16><<<(n2 + 255) / 256, 256, 0, stream>>>(residual, x, n);
+    FVK_PDL_LAUNCH(res_add_kernel<__nv_bfloat16>, (n2 + 255) / 256, 256, 0, stream, residual, x, n);
 }
 void residual_add_fp16(__half* residual, const __half* x, int n,
                        cudaStream_t stream) {
